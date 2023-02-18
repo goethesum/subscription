@@ -77,10 +77,14 @@ func connectToDB() *sql.DB {
 	counts := 0
 
 	dsn := os.Getenv("DSN")
+	if dsn == "" {
+		fmt.Println("EMPTY ENV STRING")
+	}
 
 	for {
 		connection, err := openDB(dsn)
 		if err != nil {
+			fmt.Println(dsn)
 			log.Println("postgres not yet ready...")
 		} else {
 			log.Print("connected to database!")

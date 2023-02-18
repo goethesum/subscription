@@ -9,8 +9,9 @@ build:
 
 run: build
 	@echo Starting...
-	set "DSN=${DSN}"
-	set "REDIS=${REDIS}"
+	set DSN=${DSN}
+	@echo ${DSN}
+	set REDIS=${REDIS}
 	start /min cmd /c ${BINARY_NAME} &
 	@echo back end started!
 
