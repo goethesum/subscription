@@ -23,23 +23,36 @@ type Mail struct {
 	Wait        *sync.WaitGroup
 	MailerChan  chan Message
 	ErrorChan   chan error
-	DonChan     chan bool
+	DoneChan    chan bool
 }
 
 type Message struct {
-	From         string
-	FromName     string
-	To           string
-	Subject      string
-	Attachements []string
-	Data         interface{}
-	DataMap      map[string]interface{}
-	Template     string
+	From        string
+	FromName    string
+	To          string
+	Subject     string
+	Attachments []string
+	Data        any
+	DataMap     map[string]any
+	Template    string
 }
 
-// a function to listen for messages on the MailerChan
+func (app *Config) listenForMail() {
+	for {
+		select {
+		case msg := <-app.Mailer.MailerChan:
+			go app.Mailer.sendMail(msg, app.Mailer.ErrorChan)
+		case err := <-app.Mailer.ErrorChan:
+			app.ErrorLog.Println(err)
+		case <-app.Mailer.DoneChan:
+			return
+		}
+	}
+}
 
 func (m *Mail) sendMail(msg Message, errorChan chan error) {
+	defer m.Wait.Done()
+
 	if msg.Template == "" {
 		msg.Template = "mail"
 	}
@@ -49,10 +62,10 @@ func (m *Mail) sendMail(msg Message, errorChan chan error) {
 	}
 
 	if msg.FromName == "" {
-		msg.From = m.FromName
+		msg.FromName = m.FromName
 	}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"message": msg.Data,
 	}
 
@@ -87,12 +100,14 @@ func (m *Mail) sendMail(msg Message, errorChan chan error) {
 
 	email := mail.NewMSG()
 	email.SetFrom(msg.From).AddTo(msg.To).SetSubject(msg.Subject)
-
+	fmt.Println("=========")
+	fmt.Println(email)
+	fmt.Println("=========")
 	email.SetBody(mail.TextPlain, plainMessage)
 	email.AddAlternative(mail.TextHTML, formattedMessage)
 
-	if len(msg.Attachements) > 0 {
-		for _, x := range msg.Attachements {
+	if len(msg.Attachments) > 0 {
+		for _, x := range msg.Attachments {
 			email.AddAttachment(x)
 		}
 	}
@@ -115,6 +130,7 @@ func (m *Mail) buildHTMLMessage(msg Message) (string, error) {
 	if err = t.ExecuteTemplate(&tpl, "body", msg.DataMap); err != nil {
 		return "", err
 	}
+
 	formattedMessage := tpl.String()
 	formattedMessage, err = m.inlineCSS(formattedMessage)
 	if err != nil {
@@ -122,24 +138,6 @@ func (m *Mail) buildHTMLMessage(msg Message) (string, error) {
 	}
 
 	return formattedMessage, nil
-}
-
-func (m *Mail) inlineCSS(s string) (string, error) {
-	options := premailer.Options{
-		RemoveClasses:     false,
-		CssToAttributes:   false,
-		KeepBangImportant: true,
-	}
-	prem, err := premailer.NewPremailerFromString(s, &options)
-	if err != nil {
-		return "", nil
-	}
-
-	html, err := prem.Transform()
-	if err != nil {
-		return "", nil
-	}
-	return html, nil
 }
 
 func (m *Mail) buildPlainTextMessage(msg Message) (string, error) {
@@ -154,9 +152,30 @@ func (m *Mail) buildPlainTextMessage(msg Message) (string, error) {
 	if err = t.ExecuteTemplate(&tpl, "body", msg.DataMap); err != nil {
 		return "", err
 	}
+
 	plainMessage := tpl.String()
 
 	return plainMessage, nil
+}
+
+func (m *Mail) inlineCSS(s string) (string, error) {
+	options := premailer.Options{
+		RemoveClasses:     false,
+		CssToAttributes:   false,
+		KeepBangImportant: true,
+	}
+
+	prem, err := premailer.NewPremailerFromString(s, &options)
+	if err != nil {
+		return "", err
+	}
+
+	html, err := prem.Transform()
+	if err != nil {
+		return "", err
+	}
+
+	return html, nil
 }
 
 func (m *Mail) getEncryption(e string) mail.Encryption {
