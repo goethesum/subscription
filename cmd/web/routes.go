@@ -24,5 +24,8 @@ func (app *Config) routes() http.Handler {
 	mux.Post("/register", app.PostRegisterPage)
 	mux.Get("/activate", app.ActivateAcount)
 
+	mux.Get("/plans", app.ChooseSubcription)
+	mux.Get("/subcribe", app.SubscribeToPlan)
+
 	return mux
 }
