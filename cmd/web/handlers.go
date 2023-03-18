@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"subscription/data"
 )
 
@@ -158,14 +159,44 @@ func (app *Config) ActivateAcount(w http.ResponseWriter, r *http.Request) {
 
 func (app *Config) SubscribeToPlan(w http.ResponseWriter, r *http.Request) {
 	// get the id of the plan that is chosen
+	id := r.URL.Query().Get("id")
+	planID, _ := strconv.Atoi(id)
 
 	// get the plan from the database
+	plan, err := app.Models.Plan.GetOne(planID)
+	if err != nil {
+		app.Session.Put(r.Context(), "error", "Unable to find plan.")
+		http.Redirect(w, r, "/members/plans", http.StatusSeeOther)
+		return
+	}
 
 	// get the user from the session
+	user, ok := app.Session.Get(r.Context(), "user").(data.User)
+	if !ok {
+		app.Session.Put(r.Context(), "error", "Log in first!")
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
 
-	// generate an invoice
+	// generate an invoice and email ti
+	app.Wait.Add(1)
+	go func() {
+		defer app.Wait.Done()
 
-	// send an email with the invoice attached
+		invoice, err := app.getInvoice(user, plan)
+		if err != nil {
+			// send this to a channel
+			app.ErrorChan <- err
+		}
+
+		msg := Message{
+			To:       user.Email,
+			Subject:  "Your invoice",
+			Data:     invoice,
+			Template: "invoice",
+		}
+		app.sendEmail(msg)
+	}()
 
 	// generate a manual
 
@@ -176,12 +207,12 @@ func (app *Config) SubscribeToPlan(w http.ResponseWriter, r *http.Request) {
 	// redirect
 }
 
+func (app *Config) getInvoice(u data.User, plan *data.Plan) (string, error) {
+	return plan.PlanAmountFormatted, nil
+}
+
 func (app *Config) ChooseSubcription(w http.ResponseWriter, r *http.Request) {
-	if !app.Session.Exists(r.Context(), "userID") {
-		app.Session.Put(r.Context(), "warning", "You must log in ti see this page.")
-		http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
-		return
-	}
+
 	plans, err := app.Models.Plan.GetAll()
 	if err != nil {
 		app.ErrorLog.Println(err)
