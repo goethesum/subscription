@@ -36,7 +36,6 @@ func TestMain(m *testing.M) {
 	}
 
 	// mailer
-
 	errorChan := make(chan error)
 	mailerChan := make(chan Message, 100)
 	mailerDoneChan := make(chan bool)
